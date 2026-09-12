@@ -163,4 +163,47 @@ def test_change_post_consumes_history_payload() -> None:
     assert body["findings"][0]["affected_addresses"] == ["bc1qccccccccccccccccccccccccccccccc2"]
 
 
+def test_timing_post_consumes_history_payload() -> None:
+    base = 1_700_000_000
+    txs = [
+        {
+            "txid": "a1",
+            "timestamp": base,
+            "inputs": [{"previous_txid": "p", "previous_vout": 0, "address": "addrA", "value": 1}],
+            "outputs": [{"vout": 0, "address": "pay-a1", "value": 1}],
+            "confirmed": True,
+        },
+        {
+            "txid": "b1",
+            "timestamp": base + 20,
+            "inputs": [{"previous_txid": "p", "previous_vout": 0, "address": "addrB", "value": 1}],
+            "outputs": [{"vout": 0, "address": "pay-b1", "value": 1}],
+            "confirmed": True,
+        },
+        {
+            "txid": "a2",
+            "timestamp": base + 3000,
+            "inputs": [{"previous_txid": "p", "previous_vout": 0, "address": "addrA", "value": 1}],
+            "outputs": [{"vout": 0, "address": "pay-a2", "value": 1}],
+            "confirmed": True,
+        },
+        {
+            "txid": "b2",
+            "timestamp": base + 3025,
+            "inputs": [{"previous_txid": "p", "previous_vout": 0, "address": "addrB", "value": 1}],
+            "outputs": [{"vout": 0, "address": "pay-b2", "value": 1}],
+            "confirmed": True,
+        },
+    ]
+    with TestClient(create_app()) as client:
+        response = client.post("/api/v1/heuristics/timing", json={"transactions": txs})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["pair_count"] == 1
+    assert body["window_seconds"] == 120
+    assert body["findings"][0]["type"] == "timing_correlation"
+    assert body["findings"][0]["affected_addresses"] == ["addrA", "addrB"]
+
+
+
 

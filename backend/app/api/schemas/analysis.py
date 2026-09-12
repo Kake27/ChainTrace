@@ -43,3 +43,17 @@ class ChangeDetectionResponse(BaseModel):
     candidate_count: int
     findings: list[Finding]
     warnings: list[str] = Field(default_factory=list)
+
+
+class TimingCorrelationRequest(AddressReuseRequest):
+    window_seconds: int | None = Field(default=None, ge=1, le=300)
+
+
+class TimingCorrelationResponse(BaseModel):
+    source: str
+    address: str | None = None
+    transaction_count: int
+    pair_count: int
+    window_seconds: int
+    findings: list[Finding]
+    warnings: list[str] = Field(default_factory=list)

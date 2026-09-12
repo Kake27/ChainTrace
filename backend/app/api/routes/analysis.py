@@ -8,10 +8,14 @@ from app.api.schemas.analysis import (
     ChangeDetectionResponse,
     CommonInputRequest,
     CommonInputResponse,
+    TimingCorrelationRequest,
+    TimingCorrelationResponse,
 )
+from app.config import settings
 from app.heuristics.address_reuse import detect_address_reuse
 from app.heuristics.change_detection import detect_change_candidates
 from app.heuristics.common_input import detect_common_input_ownership
+from app.heuristics.timing import detect_timing_correlations
 from app.models.transaction import Transaction
 
 router = APIRouter(prefix="/api/v1", tags=["heuristics"])
@@ -132,6 +136,55 @@ def _change_response(
         address=address,
         transaction_count=len(transactions),
         candidate_count=len(findings),
+        findings=findings,
+        warnings=warnings or [],
+    )
+
+
+@router.get("/wallet/{address}/heuristics/timing", response_model=TimingCorrelationResponse)
+def timing_from_wallet(
+    request: Request,
+    address: str,
+    max_transactions: int = Query(default=None, ge=1, le=1000),
+    window_seconds: int | None = Query(default=None, ge=1, le=300),
+) -> TimingCorrelationResponse:
+    transactions, _utxos, warnings = load_mempool_history(
+        request, address, max_transactions=max_transactions
+    )
+    return _timing_response(
+        transactions,
+        source="mempool",
+        address=address,
+        warnings=warnings,
+        window_seconds=window_seconds,
+    )
+
+
+@router.post("/heuristics/timing", response_model=TimingCorrelationResponse)
+def timing_from_history(body: TimingCorrelationRequest) -> TimingCorrelationResponse:
+    return _timing_response(
+        body.transactions,
+        source="provided_history",
+        window_seconds=body.window_seconds,
+    )
+
+
+def _timing_response(
+    transactions: list[Transaction],
+    *,
+    source: str,
+    address: str | None = None,
+    warnings: list[str] | None = None,
+    window_seconds: int | None = None,
+) -> TimingCorrelationResponse:
+    window = window_seconds or settings.timing_window_seconds
+    findings = detect_timing_correlations(transactions, window_seconds=window)
+    return TimingCorrelationResponse(
+        source=source,
+        address=address,
+        transaction_count=len(transactions),
+        pair_count=len(findings),
+        window_seconds=min(window, 300),
         findings=findings,
         warnings=warnings or [],
     )
