@@ -125,3 +125,42 @@ def test_common_input_post_consumes_history_payload() -> None:
     assert body["findings"][0]["type"] == "common_input_ownership"
 
 
+def test_change_post_consumes_history_payload() -> None:
+    txs = [
+        {
+            "txid": "recv",
+            "block_height": 1,
+            "inputs": [],
+            "outputs": [{"vout": 0, "address": "bc1qbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb1", "value": 100000000}],
+            "fee": 0,
+            "confirmed": True,
+        },
+        {
+            "txid": "spend",
+            "block_height": 2,
+            "inputs": [
+                {
+                    "previous_txid": "p0",
+                    "previous_vout": 0,
+                    "address": "bc1qaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0",
+                    "value": 112345678,
+                }
+            ],
+            "outputs": [
+                {"vout": 0, "address": "bc1qbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb1", "value": 100000000},
+                {"vout": 1, "address": "bc1qccccccccccccccccccccccccccccccc2", "value": 12345678},
+            ],
+            "fee": 250,
+            "confirmed": True,
+        },
+    ]
+    with TestClient(create_app()) as client:
+        response = client.post("/api/v1/heuristics/change", json={"transactions": txs})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["candidate_count"] >= 1
+    assert body["findings"][0]["type"] == "change_candidate"
+    assert body["findings"][0]["affected_addresses"] == ["bc1qccccccccccccccccccccccccccccccc2"]
+
+
+

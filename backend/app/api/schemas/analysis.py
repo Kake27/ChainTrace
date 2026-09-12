@@ -30,3 +30,16 @@ class CommonInputResponse(BaseModel):
     pair_count: int
     findings: list[Finding]
     warnings: list[str] = Field(default_factory=list)
+
+
+class ChangeDetectionRequest(AddressReuseRequest):
+    pass
+
+
+class ChangeDetectionResponse(BaseModel):
+    source: str
+    address: str | None = None
+    transaction_count: int
+    candidate_count: int
+    findings: list[Finding]
+    warnings: list[str] = Field(default_factory=list)
