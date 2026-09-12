@@ -11,12 +11,12 @@ from app.models.utxo import UTXO
 router = APIRouter(prefix="/api/v1", tags=["wallet"])
 
 
-@router.get("/wallet/{address}/history", response_model=WalletHistoryResponse)
-def get_wallet_history(
+def load_mempool_history(
     request: Request,
     address: str,
-    max_transactions: int = Query(default=None, ge=1, le=1000),
-) -> WalletHistoryResponse:
+    *,
+    max_transactions: int | None = None,
+) -> tuple[list[Transaction], list[UTXO], list[str]]:
     if not is_valid_bitcoin_address(address):
         raise HTTPException(status_code=400, detail="Invalid Bitcoin address")
 
@@ -28,8 +28,19 @@ def get_wallet_history(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except BlockchainAPIError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return _unpack_history(history)
 
-    transactions, utxos, warnings = _unpack_history(history)
+
+@router.get("/wallet/{address}/history", response_model=WalletHistoryResponse)
+def get_wallet_history(
+    request: Request,
+    address: str,
+    max_transactions: int = Query(default=None, ge=1, le=1000),
+) -> WalletHistoryResponse:
+    limit = max_transactions or settings.max_transactions
+    transactions, utxos, warnings = load_mempool_history(
+        request, address, max_transactions=max_transactions
+    )
     return _history_response(
         address=address,
         source="mempool",

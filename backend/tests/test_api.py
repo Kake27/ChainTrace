@@ -20,6 +20,27 @@ class FakeBlockchainClient:
         return [tx], [utxo], []
 
 
+class ReuseFakeBlockchainClient:
+    def get_wallet_history(self, address: str, *, max_transactions: int | None = None):
+        txs = [
+            Transaction(
+                txid="tx1",
+                inputs=[],
+                outputs=[Output(vout=0, address=address, value=1000)],
+                fee=0,
+                confirmed=True,
+            ),
+            Transaction(
+                txid="tx2",
+                inputs=[Input(previous_txid="tx1", previous_vout=0, address=address, value=1000)],
+                outputs=[Output(vout=0, address="bc1qotherbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", value=900)],
+                fee=100,
+                confirmed=True,
+            ),
+        ]
+        return txs, [], []
+
+
 def test_health() -> None:
     with TestClient(create_app()) as client:
         response = client.get("/health")
@@ -49,3 +70,37 @@ def test_wallet_history_returns_normalized_models() -> None:
     assert body["total_utxo_value"] == 900
     assert body["transactions"][0]["outputs"][0]["value"] == 900
     assert body["warnings"] == []
+
+
+def test_address_reuse_get_uses_wallet_history() -> None:
+    app = create_app()
+    address = "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq"
+    with TestClient(app) as client:
+        app.state.blockchain_client = ReuseFakeBlockchainClient()
+        response = client.get(f"/api/v1/wallet/{address}/heuristics/address-reuse")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["reused_address_count"] == 1
+    assert body["findings"][0]["affected_addresses"] == [address]
+    assert body["findings"][0]["affected_transactions"] == ["tx1", "tx2"]
+
+
+def test_address_reuse_post_consumes_history_payload() -> None:
+    history_tx = {
+        "txid": "tx1",
+        "inputs": [],
+        "outputs": [{"vout": 0, "address": "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq", "value": 1}],
+        "fee": 0,
+        "confirmed": True,
+    }
+    other = dict(history_tx)
+    other["txid"] = "tx2"
+    with TestClient(create_app()) as client:
+        response = client.post(
+            "/api/v1/heuristics/address-reuse",
+            json={"transactions": [history_tx, other]},
+        )
+    assert response.status_code == 200
+    assert response.json()["reused_address_count"] == 1
+
