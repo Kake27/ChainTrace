@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.env
+*.egg-info/
+dist/
+ChainTrace.md
+BOSS_Battle_2026_Brochure.pdf
+BOSS_Battle_Orientation.pdf
+fixtures
