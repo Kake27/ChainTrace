@@ -1,8 +1,14 @@
 from fastapi import APIRouter, Query, Request
 
 from app.api.routes.wallet import load_mempool_history
-from app.api.schemas.analysis import AddressReuseRequest, AddressReuseResponse
+from app.api.schemas.analysis import (
+    AddressReuseRequest,
+    AddressReuseResponse,
+    CommonInputRequest,
+    CommonInputResponse,
+)
 from app.heuristics.address_reuse import detect_address_reuse
+from app.heuristics.common_input import detect_common_input_ownership
 from app.models.transaction import Transaction
 
 router = APIRouter(prefix="/api/v1", tags=["heuristics"])
@@ -43,6 +49,46 @@ def _response(
         address=address,
         transaction_count=len(transactions),
         reused_address_count=len(findings),
+        findings=findings,
+        warnings=warnings or [],
+    )
+
+
+@router.get("/wallet/{address}/heuristics/common-input", response_model=CommonInputResponse)
+def common_input_from_wallet(
+    request: Request,
+    address: str,
+    max_transactions: int = Query(default=None, ge=1, le=1000),
+) -> CommonInputResponse:
+    transactions, _utxos, warnings = load_mempool_history(
+        request, address, max_transactions=max_transactions
+    )
+    return _common_input_response(
+        transactions,
+        source="mempool",
+        address=address,
+        warnings=warnings,
+    )
+
+
+@router.post("/heuristics/common-input", response_model=CommonInputResponse)
+def common_input_from_history(body: CommonInputRequest) -> CommonInputResponse:
+    return _common_input_response(body.transactions, source="provided_history")
+
+
+def _common_input_response(
+    transactions: list[Transaction],
+    *,
+    source: str,
+    address: str | None = None,
+    warnings: list[str] | None = None,
+) -> CommonInputResponse:
+    findings = detect_common_input_ownership(transactions)
+    return CommonInputResponse(
+        source=source,
+        address=address,
+        transaction_count=len(transactions),
+        pair_count=len(findings),
         findings=findings,
         warnings=warnings or [],
     )
