@@ -11,6 +11,9 @@ class Settings(BaseSettings):
     # Tight activity window. Do not use 10–60 minutes (ordinary confirmation lag).
     timing_window_seconds: int = 120
     timing_min_occurrences: int = 2
+    amount_min_sats: int = 10_000
+    amount_near_match_sats: int = 5_000
+    amount_min_occurrences: int = 2
 
 
 settings = Settings()

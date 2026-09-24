@@ -57,3 +57,16 @@ class TimingCorrelationResponse(BaseModel):
     window_seconds: int
     findings: list[Finding]
     warnings: list[str] = Field(default_factory=list)
+
+
+class AmountCorrelationRequest(AddressReuseRequest):
+    pass
+
+
+class AmountCorrelationResponse(BaseModel):
+    source: str
+    address: str | None = None
+    transaction_count: int
+    pair_count: int
+    findings: list[Finding]
+    warnings: list[str] = Field(default_factory=list)

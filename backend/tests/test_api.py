@@ -205,5 +205,34 @@ def test_timing_post_consumes_history_payload() -> None:
     assert body["findings"][0]["affected_addresses"] == ["addrA", "addrB"]
 
 
+def test_amount_post_consumes_history_payload() -> None:
+    txs = [
+        {
+            "txid": "tx1",
+            "timestamp": 1700000000,
+            "inputs": [{"previous_txid": "p", "previous_vout": 0, "address": "wallet", "value": 20000000}],
+            "outputs": [{"vout": 0, "address": "pay-a", "value": 12345678}],
+            "fee": 250,
+            "confirmed": True,
+        },
+        {
+            "txid": "tx2",
+            "timestamp": 1700000100,
+            "inputs": [{"previous_txid": "p", "previous_vout": 0, "address": "wallet", "value": 20000000}],
+            "outputs": [{"vout": 0, "address": "pay-b", "value": 12345678}],
+            "fee": 250,
+            "confirmed": True,
+        },
+    ]
+    with TestClient(create_app()) as client:
+        response = client.post("/api/v1/heuristics/amount", json={"transactions": txs})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["pair_count"] >= 1
+    assert body["findings"][0]["type"] == "amount_correlation"
+    assert "12345678" in body["findings"][0]["inference"]
+
+
+
 
 

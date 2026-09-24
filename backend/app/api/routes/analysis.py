@@ -4,6 +4,8 @@ from app.api.routes.wallet import load_mempool_history
 from app.api.schemas.analysis import (
     AddressReuseRequest,
     AddressReuseResponse,
+    AmountCorrelationRequest,
+    AmountCorrelationResponse,
     ChangeDetectionRequest,
     ChangeDetectionResponse,
     CommonInputRequest,
@@ -13,6 +15,7 @@ from app.api.schemas.analysis import (
 )
 from app.config import settings
 from app.heuristics.address_reuse import detect_address_reuse
+from app.heuristics.amount_correlation import detect_amount_correlations
 from app.heuristics.change_detection import detect_change_candidates
 from app.heuristics.common_input import detect_common_input_ownership
 from app.heuristics.timing import detect_timing_correlations
@@ -185,6 +188,46 @@ def _timing_response(
         transaction_count=len(transactions),
         pair_count=len(findings),
         window_seconds=min(window, 300),
+        findings=findings,
+        warnings=warnings or [],
+    )
+
+
+@router.get("/wallet/{address}/heuristics/amount", response_model=AmountCorrelationResponse)
+def amount_from_wallet(
+    request: Request,
+    address: str,
+    max_transactions: int = Query(default=None, ge=1, le=1000),
+) -> AmountCorrelationResponse:
+    transactions, _utxos, warnings = load_mempool_history(
+        request, address, max_transactions=max_transactions
+    )
+    return _amount_response(
+        transactions,
+        source="mempool",
+        address=address,
+        warnings=warnings,
+    )
+
+
+@router.post("/heuristics/amount", response_model=AmountCorrelationResponse)
+def amount_from_history(body: AmountCorrelationRequest) -> AmountCorrelationResponse:
+    return _amount_response(body.transactions, source="provided_history")
+
+
+def _amount_response(
+    transactions: list[Transaction],
+    *,
+    source: str,
+    address: str | None = None,
+    warnings: list[str] | None = None,
+) -> AmountCorrelationResponse:
+    findings = detect_amount_correlations(transactions)
+    return AmountCorrelationResponse(
+        source=source,
+        address=address,
+        transaction_count=len(transactions),
+        pair_count=len(findings),
         findings=findings,
         warnings=warnings or [],
     )
