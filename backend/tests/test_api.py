@@ -37,6 +37,13 @@ class ReuseFakeBlockchainClient:
                 fee=100,
                 confirmed=True,
             ),
+            Transaction(
+                txid="tx3",
+                inputs=[],
+                outputs=[Output(vout=0, address=address, value=800)],
+                fee=0,
+                confirmed=True,
+            ),
         ]
         return txs, [], []
 
@@ -83,7 +90,7 @@ def test_address_reuse_get_uses_wallet_history() -> None:
     body = response.json()
     assert body["reused_address_count"] == 1
     assert body["findings"][0]["affected_addresses"] == [address]
-    assert body["findings"][0]["affected_transactions"] == ["tx1", "tx2"]
+    assert body["findings"][0]["affected_transactions"] == ["tx1", "tx2", "tx3"]
 
 
 def test_address_reuse_post_consumes_history_payload() -> None:
@@ -231,6 +238,48 @@ def test_amount_post_consumes_history_payload() -> None:
     assert body["pair_count"] >= 1
     assert body["findings"][0]["type"] == "amount_correlation"
     assert "12345678" in body["findings"][0]["inference"]
+
+
+def test_peel_chain_post_consumes_history_payload() -> None:
+    txs = [
+        {
+            "txid": "tx1",
+            "block_height": 1,
+            "inputs": [{"previous_txid": "funding", "previous_vout": 0, "address": "bc1qaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0", "value": 50000000}],
+            "outputs": [
+                {"vout": 0, "address": "bc1qpaymentaaaaaaaaaaaaaaaaaaaaaaaa0", "value": 10000000},
+                {"vout": 1, "address": "bc1qchangeaaaaaaaaaaaaaaaaaaaaaaaaaa0", "value": 39123456},
+            ],
+            "fee": 500,
+            "confirmed": True,
+        },
+        {
+            "txid": "tx2",
+            "block_height": 2,
+            "inputs": [{"previous_txid": "tx1", "previous_vout": 1, "address": "bc1qchangeaaaaaaaaaaaaaaaaaaaaaaaaaa0", "value": 39123456}],
+            "outputs": [
+                {"vout": 0, "address": "bc1qpaymentbbbbbbbbbbbbbbbbbbbbbbbb1", "value": 5000000},
+                {"vout": 1, "address": "bc1qchangebbbbbbbbbbbbbbbbbbbbbbbbbb1", "value": 34122500},
+            ],
+            "fee": 500,
+            "confirmed": True,
+        },
+        {
+            "txid": "tx3",
+            "block_height": 3,
+            "inputs": [{"previous_txid": "tx2", "previous_vout": 1, "address": "bc1qchangebbbbbbbbbbbbbbbbbbbbbbbbbb1", "value": 34122500}],
+            "outputs": [{"vout": 0, "address": "bc1qpaymentcccccccccccccccccccccccc2", "value": 30000000}],
+            "fee": 500,
+            "confirmed": True,
+        },
+    ]
+    with TestClient(create_app()) as client:
+        response = client.post("/api/v1/heuristics/peel-chain", json={"transactions": txs})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["chain_count"] == 1
+    assert body["findings"][0]["type"] == "peel_chain"
+    assert body["findings"][0]["affected_transactions"] == ["tx1", "tx2", "tx3"]
 
 
 

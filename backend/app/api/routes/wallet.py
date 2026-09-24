@@ -22,12 +22,14 @@ def load_mempool_history(
 
     limit = max_transactions or settings.max_transactions
     client = request.app.state.blockchain_client
+    print("Loaded mempool client")
     try:
         history = client.get_wallet_history(address, max_transactions=limit)
     except AddressNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except BlockchainAPIError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
+    print("Loaded history")
     return _unpack_history(history)
 
 

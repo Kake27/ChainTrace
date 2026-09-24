@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     amount_min_sats: int = 10_000
     amount_near_match_sats: int = 5_000
     amount_min_occurrences: int = 2
+    peel_chain_max_hops: int = 20
 
 
 settings = Settings()

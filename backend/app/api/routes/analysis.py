@@ -12,6 +12,8 @@ from app.api.schemas.analysis import (
     CommonInputResponse,
     TimingCorrelationRequest,
     TimingCorrelationResponse,
+    PeelChainRequest,
+    PeelChainResponse,
 )
 from app.config import settings
 from app.heuristics.address_reuse import detect_address_reuse
@@ -19,6 +21,7 @@ from app.heuristics.amount_correlation import detect_amount_correlations
 from app.heuristics.change_detection import detect_change_candidates
 from app.heuristics.common_input import detect_common_input_ownership
 from app.heuristics.timing import detect_timing_correlations
+from app.heuristics.peel_chain import detect_peel_chains
 from app.models.transaction import Transaction
 
 router = APIRouter(prefix="/api/v1", tags=["heuristics"])
@@ -228,6 +231,48 @@ def _amount_response(
         address=address,
         transaction_count=len(transactions),
         pair_count=len(findings),
+        findings=findings,
+        warnings=warnings or [],
+    )
+
+
+@router.get("/wallet/{address}/heuristics/peel-chain", response_model=PeelChainResponse)
+def peel_chain_from_wallet(
+    request: Request,
+    address: str,
+    max_transactions: int = Query(default=None, ge=1, le=1000),
+) -> PeelChainResponse:
+    print("Starting peel chain analysis for address:", address)
+    transactions, _utxos, warnings = load_mempool_history(
+        request, address, max_transactions=max_transactions
+    )
+    print("Analysis done")
+    return _peel_chain_response(
+        transactions,
+        source="mempool",
+        address=address,
+        warnings=warnings,
+    )
+
+
+@router.post("/heuristics/peel-chain", response_model=PeelChainResponse)
+def peel_chain_from_history(body: PeelChainRequest) -> PeelChainResponse:
+    return _peel_chain_response(body.transactions, source="provided_history")
+
+
+def _peel_chain_response(
+    transactions: list[Transaction],
+    *,
+    source: str,
+    address: str | None = None,
+    warnings: list[str] | None = None,
+) -> PeelChainResponse:
+    findings = detect_peel_chains(transactions)
+    return PeelChainResponse(
+        source=source,
+        address=address,
+        transaction_count=len(transactions),
+        chain_count=len(findings),
         findings=findings,
         warnings=warnings or [],
     )

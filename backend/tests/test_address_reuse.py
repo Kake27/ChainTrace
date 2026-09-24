@@ -49,6 +49,17 @@ def test_no_reuse_when_each_address_is_unique() -> None:
     assert findings == []
 
 
+def test_spending_a_single_received_output_is_not_address_reuse() -> None:
+    address = "bc1qfreshchangeaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    findings = detect_address_reuse(
+        [
+            _tx("receive", outputs=[address]),
+            _tx("spend", inputs=[address], outputs=["bc1qpaybbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"]),
+        ]
+    )
+    assert findings == []
+
+
 def test_two_transactions_are_medium_severity() -> None:
     addr = "bc1qtwiceddddddddddddddddddddddddddddddd"
     findings = detect_address_reuse(

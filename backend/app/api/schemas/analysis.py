@@ -70,3 +70,16 @@ class AmountCorrelationResponse(BaseModel):
     pair_count: int
     findings: list[Finding]
     warnings: list[str] = Field(default_factory=list)
+
+
+class PeelChainRequest(AddressReuseRequest):
+    pass
+
+
+class PeelChainResponse(BaseModel):
+    source: str
+    address: str | None = None
+    transaction_count: int
+    chain_count: int
+    findings: list[Finding]
+    warnings: list[str] = Field(default_factory=list)

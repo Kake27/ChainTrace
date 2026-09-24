@@ -13,16 +13,26 @@ _LIMITATION = (
 
 
 def detect_address_reuse(transactions: list[Transaction]) -> list[Finding]:
-    """Flag addresses that appear in two or more distinct transactions."""
-    address_to_txids: dict[str, set[str]] = defaultdict(set)
+    """Flag addresses reused for multiple receives or independent spends.
+
+    An address appearing once as an output and once later as the input that spends
+    that output is normal UTXO lifecycle, not address reuse.  Keeping those cases
+    separate lets downstream heuristics evaluate fresh change paths on their own.
+    """
+    output_txids: dict[str, set[str]] = defaultdict(set)
+    input_txids: dict[str, set[str]] = defaultdict(set)
     for tx in transactions:
-        for address in _addresses_in_transaction(tx):
-            address_to_txids[address].add(tx.txid)
+        for output in tx.outputs:
+            if output.address:
+                output_txids[output.address].add(tx.txid)
+        for item in tx.inputs:
+            if item.address:
+                input_txids[item.address].add(tx.txid)
 
     reused = [
-        (address, sorted(txids))
-        for address, txids in address_to_txids.items()
-        if len(txids) >= 2
+        (address, sorted(output_txids[address] | input_txids[address]))
+        for address in output_txids.keys() | input_txids.keys()
+        if max(len(output_txids[address]), len(input_txids[address])) >= 2
     ]
     reused.sort(key=lambda item: (-len(item[1]), item[0]))
 
@@ -59,14 +69,6 @@ def detect_address_reuse(transactions: list[Transaction]) -> list[Finding]:
             )
         )
     return findings
-
-
-def _addresses_in_transaction(tx: Transaction) -> set[str]:
-    addresses: set[str] = set()
-    for item in (*tx.inputs, *tx.outputs):
-        if item.address:
-            addresses.add(item.address)
-    return addresses
 
 
 def _severity(occurrence_count: int) -> Severity:

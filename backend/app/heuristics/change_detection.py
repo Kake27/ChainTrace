@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections import defaultdict
+
 from app.heuristics.common_input import looks_coinjoin_like
 from app.models.evidence import Evidence
 from app.models.finding import Finding, FindingType, Severity
@@ -28,7 +30,7 @@ _AMBIGUOUS_MARGIN = 0.08
 def detect_change_candidates(transactions: list[Transaction]) -> list[Finding]:
     """Score likely change outputs; never treat last-vout as sufficient on its own."""
     ordered = _chronological(transactions)
-    first_input_index = _first_input_indexes(ordered)
+    input_indexes = _input_indexes(ordered)
     seen: set[str] = set()
     ranked_rows: list[tuple[float, int, dict]] = []
 
@@ -38,7 +40,7 @@ def detect_change_candidates(transactions: list[Transaction]) -> list[Finding]:
             _remember(tx, seen)
             continue
         scored = [
-            _score_output(tx, output, spendable, seen, first_input_index, index)
+            _score_output(tx, output, spendable, seen, input_indexes, index)
             for output in spendable
         ]
         scored.sort(key=lambda row: (-row["score"], row["vout"]))
@@ -68,7 +70,7 @@ def _score_output(
     output: Output,
     spendable: list[Output],
     seen: set[str],
-    first_input_index: dict[str, int],
+    input_indexes: dict[str, list[int]],
     tx_index: int,
 ) -> dict:
     address = output.address or ""
@@ -84,7 +86,7 @@ def _score_output(
         "script_type_match": infer_script_type(address, output.script_type) in input_scripts,
         "contrasts_round_payment": (not _is_round_amount(output.value)) and other_round,
         "non_round_amount": not _is_round_amount(output.value),
-        "later_spent": first_input_index.get(address, -1) > tx_index,
+        "later_spent": any(index > tx_index for index in input_indexes.get(address, [])),
         "two_output_structure": len(spendable) == 2,
         "input_address_reuse": address in input_addresses,
         "later_vout": output.vout == max_vout and len(spendable) > 1,
@@ -139,12 +141,12 @@ def _chronological(transactions: list[Transaction]) -> list[Transaction]:
     )
 
 
-def _first_input_indexes(transactions: list[Transaction]) -> dict[str, int]:
-    indexes: dict[str, int] = {}
+def _input_indexes(transactions: list[Transaction]) -> dict[str, list[int]]:
+    indexes: dict[str, list[int]] = defaultdict(list)
     for index, tx in enumerate(transactions):
         for inp in tx.inputs:
-            if inp.address and inp.address not in indexes:
-                indexes[inp.address] = index
+            if inp.address:
+                indexes[inp.address].append(index)
     return indexes
 
 

@@ -39,7 +39,7 @@ POST http://127.0.0.1:8000/api/v1/heuristics/amount
 
 The POST body is `{ "transactions": [ ... ] }` using the `transactions` array from the history response.
 
-- Address reuse: same address in two or more distinct txids (linkability, not identity).
+- Address reuse: an address reused for multiple receives or multiple independent spends; a single receive followed by its spend is normal UTXO lifecycle, not reuse (linkability, not identity).
 - Common-input ownership: distinct input addresses in the same tx are a *candidate* same-owner link. CoinJoin-like equal-output spends are flagged and scored much lower.
 - Change detection: multi-output txs are scored with explainable features (new address, script match, round-payment contrast, later spend, structure). Last output alone is never treated as proof.
 - Timing correlation: address pairs with **repeated** activity inside a short window (default 120s, max 300s). This is not the 10–60 minute confirmation lag. Isolated matches are ignored.
