@@ -18,6 +18,7 @@ _LIMITATION = (
 _MAX_WINDOW_SECONDS = 300
 _MAX_CONFIDENCE = 0.72
 _MIN_SCORE = 0.30
+_REPRESENTATIVE_PAIR_LIMIT = 3
 
 
 class _Event(NamedTuple):
@@ -39,10 +40,16 @@ def detect_timing_correlations(
 
     findings: list[Finding] = []
     for left, right in combinations(active, 2):
-        matches = _pair_matches(events[left], events[right], window)
+        matches, same_block_excluded = _pair_matches(events[left], events[right], window)
         if len(matches) < min_hits:
             continue
-        stats = _timing_stats(matches, events[left], events[right], window)
+        stats = _timing_stats(
+            matches,
+            events[left],
+            events[right],
+            window,
+            same_block_excluded,
+        )
         if stats["score"] < _MIN_SCORE:
             continue
         findings.append(_to_finding(left, right, matches, stats))
@@ -74,26 +81,32 @@ def _events_by_address(transactions: list[Transaction]) -> dict[str, list[_Event
     return grouped
 
 
-def _pair_matches(left: list[_Event], right: list[_Event], window: int) -> list[dict]:
+def _pair_matches(left: list[_Event], right: list[_Event], window: int) -> tuple[list[dict], int]:
+    """Greedily select distinct, cross-block, non-zero timing relationships."""
     matches: list[dict] = []
+    same_block_excluded = 0
     i = j = 0
     while i < len(left) and j < len(right):
         a, b = left[i], right[j]
         if a.txid == b.txid:
-            if a.timestamp <= b.timestamp:
-                i += 1
-            else:
-                j += 1
+            i += 1
+            continue
+        if a.block_height is not None and a.block_height == b.block_height:
+            same_block_excluded += 1
+            i, j = _advance_earlier(i, j, a, b)
             continue
         delta = b.timestamp - a.timestamp
+        if delta == 0:
+            i, j = _advance_earlier(i, j, a, b)
+            continue
         if abs(delta) <= window:
             matches.append(
                 {
                     "left_txid": a.txid,
                     "right_txid": b.txid,
-                    "left_timestamp": a.timestamp,
-                    "right_timestamp": b.timestamp,
-                    "delta_seconds": delta,
+                    "left_block_height": a.block_height,
+                    "right_block_height": b.block_height,
+                    "delta_seconds": abs(delta),
                     "ordering": "left_then_right" if delta > 0 else "right_then_left" if delta < 0 else "simultaneous",
                 }
             )
@@ -103,7 +116,13 @@ def _pair_matches(left: list[_Event], right: list[_Event], window: int) -> list[
             i += 1
         else:
             j += 1
-    return matches
+    return matches, same_block_excluded
+
+
+def _advance_earlier(i: int, j: int, a: _Event, b: _Event) -> tuple[int, int]:
+    if (a.timestamp, a.txid) <= (b.timestamp, b.txid):
+        return i + 1, j
+    return i, j + 1
 
 
 def _timing_stats(
@@ -111,13 +130,14 @@ def _timing_stats(
     left: list[_Event],
     right: list[_Event],
     window: int,
+    same_block_excluded: int,
 ) -> dict:
     n = len(matches)
-    abs_deltas = [abs(item["delta_seconds"]) for item in matches]
+    abs_deltas = [item["delta_seconds"] for item in matches]
     median_delta = int(statistics.median(abs_deltas))
     mean_delta = int(statistics.mean(abs_deltas))
     stdev = float(statistics.pstdev(abs_deltas)) if n > 1 else 0.0
-    order_counts = {"left_then_right": 0, "right_then_left": 0, "simultaneous": 0}
+    order_counts = {"left_then_right": 0, "right_then_left": 0}
     for item in matches:
         order_counts[item["ordering"]] += 1
     order_consistency = max(order_counts.values()) / n
@@ -142,12 +162,29 @@ def _timing_stats(
         "order_consistency": round(order_consistency, 2),
         "coverage": round(coverage, 2),
         "window_seconds": window,
+        "block_height_relationship": {
+            "cross_block_occurrence_count": sum(
+                1
+                for item in matches
+                if item["left_block_height"] is not None and item["right_block_height"] is not None
+            ),
+            "timestamp_fallback_occurrence_count": sum(
+                1
+                for item in matches
+                if item["left_block_height"] is None or item["right_block_height"] is None
+            ),
+            "same_block_pairs_excluded": same_block_excluded,
+        },
     }
 
 
 def _to_finding(left: str, right: str, matches: list[dict], stats: dict) -> Finding:
+    representative_pairs = sorted(
+        matches,
+        key=lambda item: (item["delta_seconds"], item["left_txid"], item["right_txid"]),
+    )[:_REPRESENTATIVE_PAIR_LIMIT]
     txids = []
-    for item in matches:
+    for item in representative_pairs:
         txids.extend([item["left_txid"], item["right_txid"]])
     unique_txids = list(dict.fromkeys(txids))
     confidence = stats["score"]
@@ -163,7 +200,8 @@ def _to_finding(left: str, right: str, matches: list[dict], stats: dict) -> Find
                 type="timing_correlation",
                 payload={
                     "addresses": [left, right],
-                    "occurrences": matches,
+                    "representative_pairs": representative_pairs,
+                    "representative_transaction_ids": unique_txids,
                     **stats,
                 },
             )

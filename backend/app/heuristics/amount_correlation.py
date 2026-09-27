@@ -159,9 +159,9 @@ def _candidates_from_heuristics(
         detect_timing_correlations(transactions) if timing_findings is None else timing_findings
     ):
         payload = finding.evidence[0].payload if finding.evidence else {}
-        occurrences = payload.get("occurrences") or []
-        if occurrences:
-            for item in occurrences:
+        representative_pairs = payload.get("representative_pairs") or []
+        if representative_pairs:
+            for item in representative_pairs:
                 add(
                     item["left_txid"],
                     item["right_txid"],

@@ -5,7 +5,7 @@ from app.analysis.service import analyse_wallet
 from app.blockchain.mempool_client import AddressNotFoundError, BlockchainAPIError
 from app.models.analysis import AnalysisResult
 
-router = APIRouter(prefix="/api/v1", tags=["analysis"])
+router = APIRouter(tags=["analysis"])
 
 
 class AnalyseWalletRequest(BaseModel):
