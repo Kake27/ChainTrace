@@ -141,7 +141,7 @@ def _change_response(
         source=source,
         address=address,
         transaction_count=len(transactions),
-        candidate_count=len(findings),
+        candidate_count=sum(1 for finding in findings if finding.affected_addresses),
         findings=findings,
         warnings=warnings or [],
     )

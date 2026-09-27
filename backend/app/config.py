@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     amount_near_match_sats: int = 5_000
     amount_min_occurrences: int = 2
     peel_chain_max_hops: int = 20
+    change_min_score: float = 0.40
+    change_min_score_gap: float = 0.12
+    change_high_output_threshold: int = 10
 
 
 settings = Settings()

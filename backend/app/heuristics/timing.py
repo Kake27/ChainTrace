@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import statistics
+from math import sqrt
 from collections import defaultdict
 from itertools import combinations
 from typing import NamedTuple
@@ -141,17 +142,28 @@ def _timing_stats(
     for item in matches:
         order_counts[item["ordering"]] += 1
     order_consistency = max(order_counts.values()) / n
-    occurrence = min(1.0, (n - 1) / 3)
+    occurrence_strength = min(1.0, n / 12)
     delta_consistency = 1.0 if stdev == 0 else max(0.0, 1.0 - stdev / window)
     tightness = 1.0 - min(1.0, median_delta / window)
     coverage = n / min(len(left), len(right))
-    score = (
-        0.30 * occurrence
-        + 0.25 * delta_consistency
-        + 0.15 * tightness
-        + 0.15 * order_consistency
-        + 0.15 * min(1.0, coverage)
+    cross_block_count = sum(
+        1
+        for item in matches
+        if item["left_block_height"] is not None and item["right_block_height"] is not None
     )
+    timestamp_fallback_count = n - cross_block_count
+    cross_block_strength = (cross_block_count + 0.6 * timestamp_fallback_count) / n
+    temporal_consistency = 0.60 * delta_consistency + 0.40 * tightness
+    # Pattern strength measures the repeatability of the observed subset. Coverage
+    # then moderates confidence without deleting a small but potentially useful pattern.
+    pattern_strength = (
+        0.55 * occurrence_strength
+        + 0.15 * temporal_consistency
+        + 0.20 * order_consistency
+        + 0.10 * cross_block_strength
+    )
+    coverage_modifier = 0.60 + 0.40 * sqrt(min(1.0, coverage))
+    score = pattern_strength * coverage_modifier
     return {
         "score": round(min(_MAX_CONFIDENCE, score), 2),
         "occurrence_count": n,
@@ -161,18 +173,12 @@ def _timing_stats(
         "order_counts": order_counts,
         "order_consistency": round(order_consistency, 2),
         "coverage": round(coverage, 2),
+        "pattern_strength": round(pattern_strength, 2),
+        "coverage_modifier": round(coverage_modifier, 2),
         "window_seconds": window,
         "block_height_relationship": {
-            "cross_block_occurrence_count": sum(
-                1
-                for item in matches
-                if item["left_block_height"] is not None and item["right_block_height"] is not None
-            ),
-            "timestamp_fallback_occurrence_count": sum(
-                1
-                for item in matches
-                if item["left_block_height"] is None or item["right_block_height"] is None
-            ),
+            "cross_block_occurrence_count": cross_block_count,
+            "timestamp_fallback_occurrence_count": timestamp_fallback_count,
             "same_block_pairs_excluded": same_block_excluded,
         },
     }
