@@ -35,9 +35,12 @@ GET http://127.0.0.1:8000/api/v1/wallet/{address}/heuristics/timing
 POST http://127.0.0.1:8000/api/v1/heuristics/timing
 GET http://127.0.0.1:8000/api/v1/wallet/{address}/heuristics/amount
 POST http://127.0.0.1:8000/api/v1/heuristics/amount
+POST http://127.0.0.1:8000/analyse
 ```
 
 The POST body is `{ "transactions": [ ... ] }` using the `transactions` array from the history response.
+
+`POST /analyse` accepts `{ "wallet_address": "<bitcoin-address>" }`. It fetches the wallet once and returns all deterministic findings, ownership clusters with edge evidence, and aggregate counts. It does not calculate a privacy score.
 
 - Address reuse: an address reused for multiple receives or multiple independent spends; a single receive followed by its spend is normal UTXO lifecycle, not reuse (linkability, not identity).
 - Common-input ownership: distinct input addresses in the same tx are a *candidate* same-owner link. CoinJoin-like equal-output spends are flagged and scored much lower.

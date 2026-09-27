@@ -7,6 +7,7 @@ from fastapi import FastAPI
 
 from app.api.routes.analysis import router as analysis_router
 from app.api.routes.health import router as health_router
+from app.api.routes.unified_analysis import router as unified_analysis_router
 from app.api.routes.wallet import router as wallet_router
 from app.blockchain.mempool_client import MempoolBlockchainClient
 
@@ -31,6 +32,7 @@ def create_app() -> FastAPI:
     app.include_router(health_router)
     app.include_router(wallet_router)
     app.include_router(analysis_router)
+    app.include_router(unified_analysis_router)
     return app
 
 

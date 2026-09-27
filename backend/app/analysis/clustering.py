@@ -4,8 +4,10 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from itertools import combinations
 
+from app.analysis.graph import TransactionGraph
 from app.heuristics.change_detection import detect_change_candidates, infer_script_type
 from app.heuristics.common_input import looks_coinjoin_like
+from app.models.finding import Finding
 from app.models.transaction import Transaction
 
 
@@ -77,15 +79,24 @@ class OwnershipClusters:
         )
 
 
-def build_ownership_clusters(transactions: list[Transaction]) -> OwnershipClusters:
+def build_ownership_clusters(
+    transactions: list[Transaction],
+    *,
+    graph: TransactionGraph | None = None,
+    change_findings: list[Finding] | None = None,
+) -> OwnershipClusters:
     """Build conservative clusters from common-input and probable-change edges.
 
     CoinJoin-like transactions never create edges.  The returned edges retain the
     transaction, confidence, and feature evidence used for each Union-Find merge.
     """
+    graph = graph or TransactionGraph.build(transactions)
+    change_findings = (
+        detect_change_candidates(transactions) if change_findings is None else change_findings
+    )
     uf = _UnionFind()
     edges: list[OwnershipEdge] = []
-    by_id = {tx.txid: tx for tx in transactions}
+    by_id = graph.by_txid
 
     for tx in transactions:
         if looks_coinjoin_like(tx):
@@ -103,7 +114,7 @@ def build_ownership_clusters(transactions: list[Transaction]) -> OwnershipCluste
                 )
             )
 
-    for finding in detect_change_candidates(transactions):
+    for finding in change_findings:
         if not finding.affected_transactions or not finding.affected_addresses:
             continue
         tx = by_id.get(finding.affected_transactions[0])
@@ -153,7 +164,7 @@ def build_ownership_clusters(transactions: list[Transaction]) -> OwnershipCluste
         for address in addresses:
             address_to_cluster[address] = cluster_id
 
-    _populate_profiles(profiles, address_to_cluster, transactions)
+    _populate_profiles(profiles, address_to_cluster, transactions, change_findings)
     return OwnershipClusters(edges=edges, _address_to_cluster=address_to_cluster, profiles=profiles)
 
 
@@ -161,6 +172,7 @@ def _populate_profiles(
     profiles: dict[str, ClusterProfile],
     address_to_cluster: dict[str, str],
     transactions: list[Transaction],
+    change_findings: list[Finding],
 ) -> None:
     for tx in transactions:
         tx_clusters = {
@@ -177,7 +189,7 @@ def _populate_profiles(
                 if script:
                     profiles[cluster_id].script_types.add(script)
 
-    for finding in detect_change_candidates(transactions):
+    for finding in change_findings:
         if not finding.affected_addresses or not finding.evidence:
             continue
         cluster_id = address_to_cluster.get(finding.affected_addresses[0])

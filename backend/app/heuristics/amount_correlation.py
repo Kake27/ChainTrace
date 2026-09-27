@@ -58,14 +58,28 @@ class _Match(NamedTuple):
     payment_hint: bool
 
 
-def detect_amount_correlations(transactions: list[Transaction]) -> list[Finding]:
+def detect_amount_correlations(
+    transactions: list[Transaction],
+    *,
+    address_reuse_findings: list[Finding] | None = None,
+    common_input_findings: list[Finding] | None = None,
+    change_findings: list[Finding] | None = None,
+    timing_findings: list[Finding] | None = None,
+) -> list[Finding]:
     """Compare amounts only on tx pairs already linked by other heuristics."""
     if len(transactions) < 2:
         return []
     by_id = {tx.txid: tx for tx in transactions}
     order = _tx_order(transactions)
     findings: list[Finding] = []
-    for candidate in _candidates_from_heuristics(transactions, order):
+    for candidate in _candidates_from_heuristics(
+        transactions,
+        order,
+        address_reuse_findings=address_reuse_findings,
+        common_input_findings=common_input_findings,
+        change_findings=change_findings,
+        timing_findings=timing_findings,
+    ):
         left = by_id.get(candidate.tx_left)
         right = by_id.get(candidate.tx_right)
         if left is None or right is None:
@@ -109,6 +123,11 @@ def _tx_order(transactions: list[Transaction]) -> dict[str, tuple[int, int, str]
 def _candidates_from_heuristics(
     transactions: list[Transaction],
     order: dict[str, tuple[int, int, str]],
+    *,
+    address_reuse_findings: list[Finding] | None,
+    common_input_findings: list[Finding] | None,
+    change_findings: list[Finding] | None,
+    timing_findings: list[Finding] | None,
 ) -> list[_Candidate]:
     merged: dict[tuple[str, str], tuple[set[str], set[str]]] = {}
 
@@ -120,15 +139,25 @@ def _candidates_from_heuristics(
         addrs.update(addr for addr in addresses if addr)
         reasons.add(reason)
 
-    for finding in detect_address_reuse(transactions):
+    for finding in (
+        detect_address_reuse(transactions)
+        if address_reuse_findings is None
+        else address_reuse_findings
+    ):
         for tx_a, tx_b in _consecutive(finding.affected_transactions, order):
             add(tx_a, tx_b, finding.affected_addresses, "address_reuse")
 
-    for finding in detect_common_input_ownership(transactions):
+    for finding in (
+        detect_common_input_ownership(transactions)
+        if common_input_findings is None
+        else common_input_findings
+    ):
         for tx_a, tx_b in _consecutive(finding.affected_transactions, order):
             add(tx_a, tx_b, finding.affected_addresses, "common_input_ownership")
 
-    for finding in detect_timing_correlations(transactions):
+    for finding in (
+        detect_timing_correlations(transactions) if timing_findings is None else timing_findings
+    ):
         payload = finding.evidence[0].payload if finding.evidence else {}
         occurrences = payload.get("occurrences") or []
         if occurrences:
@@ -144,7 +173,9 @@ def _candidates_from_heuristics(
                 add(tx_a, tx_b, finding.affected_addresses, "timing_correlation")
 
     spends = _input_txids_by_address(transactions)
-    for finding in detect_change_candidates(transactions):
+    for finding in (
+        detect_change_candidates(transactions) if change_findings is None else change_findings
+    ):
         origin = finding.affected_transactions[0] if finding.affected_transactions else ""
         origin_rank = order.get(origin, (10**9, 0, origin))[0]
         for address in finding.affected_addresses:

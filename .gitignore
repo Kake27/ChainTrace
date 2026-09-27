@@ -10,4 +10,5 @@ dist/
 ChainTrace.md
 BOSS_Battle_2026_Brochure.pdf
 BOSS_Battle_Orientation.pdf
-fixtures
+test.json
+

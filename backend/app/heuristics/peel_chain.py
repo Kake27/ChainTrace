@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from app.analysis.clustering import OwnershipClusters, build_ownership_clusters
+from app.analysis.graph import TransactionGraph
 from app.config import settings
 from app.heuristics.change_detection import detect_change_candidates, infer_script_type
 from app.heuristics.common_input import looks_coinjoin_like
@@ -36,29 +37,33 @@ class _Hop:
 
 
 class _PeelDetector:
-    def __init__(self, transactions: list[Transaction]) -> None:
-        self.by_id = {tx.txid: tx for tx in transactions}
-        self.clusters: OwnershipClusters = build_ownership_clusters(transactions)
-        self.spends = self._spending_index(transactions)
-        self.change_by_txid = self._change_candidates(transactions)
+    def __init__(
+        self,
+        transactions: list[Transaction],
+        *,
+        graph: TransactionGraph | None = None,
+        clusters: OwnershipClusters | None = None,
+        change_findings: list[Finding] | None = None,
+    ) -> None:
+        self.graph = graph or TransactionGraph.build(transactions)
+        self.by_id = self.graph.by_txid
+        self.clusters = clusters or build_ownership_clusters(
+            transactions, graph=self.graph, change_findings=change_findings
+        )
+        self.spends = self.graph.spending_by_outpoint
+        self.change_by_txid = self._change_candidates(
+            transactions,
+            change_findings=change_findings,
+        )
 
     @staticmethod
-    def _spending_index(transactions: list[Transaction]) -> dict[tuple[str, int], str]:
-        index: dict[tuple[str, int], str] = {}
-        for tx in transactions:
-            for item in tx.inputs:
-                key = (item.previous_txid, item.previous_vout)
-                # Conflicting supplied histories are ambiguous; never select either spender.
-                if key in index and index[key] != tx.txid:
-                    index[key] = ""
-                else:
-                    index[key] = tx.txid
-        return index
-
-    @staticmethod
-    def _change_candidates(transactions: list[Transaction]) -> dict[str, list[dict]]:
+    def _change_candidates(
+        transactions: list[Transaction], *, change_findings: list[Finding] | None = None
+    ) -> dict[str, list[dict]]:
         grouped: dict[str, list[dict]] = {}
-        for finding in detect_change_candidates(transactions):
+        for finding in (
+            detect_change_candidates(transactions) if change_findings is None else change_findings
+        ):
             if not finding.affected_transactions or not finding.evidence:
                 continue
             txid = finding.affected_transactions[0]
@@ -204,9 +209,20 @@ class _PeelDetector:
         return txids, hops
 
 
-def detect_peel_chains(transactions: list[Transaction]) -> list[Finding]:
+def detect_peel_chains(
+    transactions: list[Transaction],
+    *,
+    graph: TransactionGraph | None = None,
+    clusters: OwnershipClusters | None = None,
+    change_findings: list[Finding] | None = None,
+) -> list[Finding]:
     """Find 3+ transaction chains with a unique, decreasing change continuation."""
-    detector = _PeelDetector(transactions)
+    detector = _PeelDetector(
+        transactions,
+        graph=graph,
+        clusters=clusters,
+        change_findings=change_findings,
+    )
     deduplicated: set[tuple[str, ...]] = set()
     findings: list[Finding] = []
     for seed in sorted(transactions, key=lambda item: item.txid):
